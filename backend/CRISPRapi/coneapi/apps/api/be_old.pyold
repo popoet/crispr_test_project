@@ -1,0 +1,386 @@
+import os
+import json
+from django.conf import settings
+from baseEditor import models as be_models
+from cas9 import cas9 as cas9_module
+
+# --- 辅助函数 ---
+def parse_window(window_str):
+    """解析类似 '14-17' 成 (14,17) 并验证 10<=start<=end<=20"""
+    try:
+        parts = window_str.split('-')
+        start = int(parts[0])
+        end = int(parts[1])
+    except Exception:
+        raise ValueError("Base editing window 格式错误，应为 'start-end'，例如 '14-17'")
+    if start < 10 or end > 20 or start > end:
+        raise ValueError("Base editing window 必须在 10 到 20 之间，且 start <= end")
+    return start, end
+
+# 标准遗传密码子表 (Standard Genetic Code)
+CODON_TABLE = {
+    # 第一个碱基：A
+    'AAA': 'K', 'AAC': 'N', 'AAG': 'K', 'AAT': 'N',
+    'ACA': 'T', 'ACC': 'T', 'ACG': 'T', 'ACT': 'T',
+    'AGA': 'R', 'AGC': 'S', 'AGG': 'R', 'AGT': 'S',
+    'ATA': 'I', 'ATC': 'I', 'ATG': 'M', 'ATT': 'I',
+
+    # 第一个碱基：C
+    'CAA': 'Q', 'CAC': 'H', 'CAG': 'Q', 'CAT': 'H',
+    'CCA': 'P', 'CCC': 'P', 'CCG': 'P', 'CCT': 'P',
+    'CGA': 'R', 'CGC': 'R', 'CGG': 'R', 'CGT': 'R',
+    'CTA': 'L', 'CTC': 'L', 'CTG': 'L', 'CTT': 'L',
+
+    # 第一个碱基：G
+    'GAA': 'E', 'GAC': 'D', 'GAG': 'E', 'GAT': 'D',
+    'GCA': 'A', 'GCC': 'A', 'GCG': 'A', 'GCT': 'A',
+    'GGA': 'G', 'GGC': 'G', 'GGG': 'G', 'GGT': 'G',
+    'GTA': 'V', 'GTC': 'V', 'GTG': 'V', 'GTT': 'V',
+
+    # 第一个碱基：T
+    'TAA': '*', 'TAC': 'Y', 'TAG': '*', 'TAT': 'Y',
+    'TCA': 'S', 'TCC': 'S', 'TCG': 'S', 'TCT': 'S',
+    'TGA': '*', 'TGC': 'C', 'TGG': 'W', 'TGT': 'C',
+    'TTA': 'L', 'TTC': 'F', 'TTG': 'L', 'TTT': 'F'
+}
+
+# 氨基酸理化性质分类（按极性、电荷等）
+AA_PROPERTIES = {
+    # 非极性（疏水）氨基酸
+    'A': 'nonpolar', 'I': 'nonpolar', 'L': 'nonpolar', 'M': 'nonpolar',
+    'F': 'nonpolar', 'W': 'nonpolar', 'P': 'nonpolar', 'V': 'nonpolar', 'G': 'nonpolar',
+
+    # 极性不带电荷（亲水）氨基酸
+    'S': 'polar', 'T': 'polar', 'C': 'polar', 'Y': 'polar', 'N': 'polar', 'Q': 'polar',
+
+    # 带正电荷（碱性）氨基酸
+    'K': 'positive', 'R': 'positive', 'H': 'positive',
+
+    # 带负电荷（酸性）氨基酸
+    'D': 'negative', 'E': 'negative',
+
+    # 终止密码子
+    '*': 'stop'
+}
+
+def translate_dna(seq):
+    """简单把 DNA 序列按三联子翻译到氨基酸（从第一个碱基开始），短 codon 返回 ''"""
+    aa = []
+    for i in range(0, len(seq) - 2, 3):
+        codon = seq[i:i+3].upper().replace('U','T')
+        aa.append(CODON_TABLE.get(codon, 'X'))
+    return ''.join(aa)
+
+def gc_content(seq):
+    seq = seq.upper()
+    if len(seq) == 0:
+        return 0
+    return round((seq.count('G') + seq.count('C'))/len(seq) * 100, 2)
+
+# def apply_base_edit(seq, editor_type, window_positions, pam_index_offset=0):
+#     """
+#     seq: 目标序列（通常是 spacer + PAM 上游之类的上下文，0-based）
+#     editor_type: 'ABE'/'CBE'/'GBE'/'ABE+CBE'
+#     window_positions: tuple (start_idx, end_idx) relative to sgRNA (1-based positions typical from user)
+#     返回：list of edits: 每个 edit 是 dict {pos, ref_base, alt_base, new_seq}
+#     说明：此函数只做本地替换，不做读框与修饰优先级判断。
+#     """
+#     start, end = window_positions
+#     # 将 1-based window 转换为 0-based indices 相对于 seq 的某个参照（这里假设 caller 已经把相对索引对齐）
+#     edits = []
+#     # 遍历 window 内碱基
+#     for i in range(start-1, end):
+#         if i < 0 or i >= len(seq):
+#             continue
+#         base = seq[i].upper()
+#         alt = None
+#         if editor_type in ('ABE', 'ABE+CBE') and base == 'A':
+#             alt = 'G'
+#         if editor_type in ('CBE', 'ABE+CBE') and base == 'C':
+#             alt = 'T'
+#         # GBE: C -> G
+#         if editor_type == 'GBE' and base == 'C':
+#             alt = 'G'
+#         if alt:
+#             new_seq = seq[:i] + alt + seq[i+1:]
+#             edits.append({"pos": i, "ref": base, "alt": alt, "new_seq": new_seq})
+#     return edits
+
+
+def apply_base_edit(seq, editor_type, window_positions, pam_index_offset=0):
+    """
+    seq: 目标序列（通常是 spacer + PAM 上游之类的上下文，0-based）
+    editor_type: 'ABE'/'CBE'/'GBE'/'ABE+CBE'
+    window_positions: tuple (start_idx, end_idx) relative to sgRNA (1-based positions typical from user)
+    返回：list of edits: 每个 edit 是 dict {pos, ref_base, alt_base, new_seq}
+    说明：此函数只做本地替换，不做读框与修饰优先级判断。
+    """
+    # 增加防护性检查
+    if seq is None or not isinstance(seq, str):
+        return []
+
+    # 验证序列是否为空
+    if len(seq) == 0:
+        return []
+
+    start, end = window_positions
+    # 将 1-based window 转换为 0-based indices 相对于 seq 的某个参照
+    edits = []
+    # 遍历 window 内碱基
+    for i in range(start - 1, end):
+        if i < 0 or i >= len(seq):
+            continue
+        base = seq[i].upper()
+        alt = None
+        if editor_type in ('ABE', 'ABE+CBE') and base == 'A':
+            alt = 'G'
+        if editor_type in ('CBE', 'ABE+CBE') and base == 'C':
+            alt = 'T'
+        # GBE: C -> G
+        if editor_type == 'GBE' and base == 'C':
+            alt = 'G'
+        if alt:
+            new_seq = seq[:i] + alt + seq[i + 1:]
+            edits.append({"pos": i, "ref": base, "alt": alt, "new_seq": new_seq})
+    return edits
+
+
+# def add_Jbrowse_to_json_be(task_id, task_path, sequence_position_json, guide_json, db_name):
+#     """
+#     为base editor任务添加JBrowse信息
+#     """
+#     try:
+#         # 解析序列位置信息
+#         sequence_position = json.loads(sequence_position_json) if isinstance(sequence_position_json,
+#                                                                              str) else sequence_position_json
+#
+#         # 构建JBrowse tracks信息
+#         jbrowse_tracks = {}
+#
+#         # 为每个sgRNA构建track信息
+#         if isinstance(guide_json, dict) and 'rows' in guide_json:
+#             for guide_row in guide_json.get('rows', []):
+#                 sgRNA_seq = guide_row.get('sgRNA_seq', '')
+#                 if sgRNA_seq:
+#                     jbrowse_tracks[sgRNA_seq] = {
+#                         "jbrowse_link": f"/jbrowse/index.html?data=tracks&loc={sequence_position.get('seqid', '')}:{sequence_position.get('start', 0)}-{sequence_position.get('end', 0)}",
+#                         "track": f"base_editor_{task_id}"
+#                     }
+#         elif isinstance(guide_json, dict):
+#             for sgRNA_seq in guide_json.keys():
+#                 jbrowse_tracks[sgRNA_seq] = {
+#                     "jbrowse_link": f"/jbrowse/index.html?data=tracks&loc={sequence_position.get('seqid', '')}:{sequence_position.get('start', 0)}-{sequence_position.get('end', 0)}",
+#                     "track": f"base_editor_{task_id}"
+#                 }
+#
+#         return jbrowse_tracks
+#     except Exception as e:
+#         print(f"添加JBrowse信息失败: {str(e)}")
+#         return {}
+
+
+# --- 主流程 ---
+def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_db, editor_type, base_window):
+    # 创建任务记录（与 cas9 类似）
+    be_task = be_models.result_baseediting_list(
+        task_id=str(task_id),
+        input_sequence=inputSequence,
+        pam_type=pam,
+        spacer_length=spacerLength,
+        sgRNA_module=sgRNAModule,
+        name_db=name_db,
+        editor_type=editor_type,
+        base_editing_window=base_window,
+        task_status='running',
+        sequence_position=''
+    )
+    be_task.save()
+
+    # 1) 解析 window
+    try:
+        window_start, window_end = parse_window(base_window)
+    except ValueError as e:
+        be_task.task_status = 'failed'
+        be_task.log = str(e)
+        be_task.save()
+        return {"error": str(e)}
+
+    # 2) 识别输入序列并获取序列/位置信息（复用 cas9 的函数）
+    input_type = cas9_module.input_sequence_to_fasta_sequence_position(inputSequence)
+    task_path = os.path.join(settings.BASE_DIR, 'work', 'baseEditorTasks', str(task_id))
+    os.makedirs(task_path, exist_ok=True)
+    fa_path = os.path.join(settings.BASE_DIR, 'database', 'TargetGenome', name_db, f'{name_db}.fa')
+    gff_path = os.path.join(settings.BASE_DIR, 'database', 'TargetGenomeGff', name_db, f'{name_db}.gff')
+    gff_pkl_path = os.path.join(settings.BASE_DIR, 'database', 'TargetGenomeGff', name_db, f'{name_db}.gff.pkl')
+
+    fasta_sequence, fasta_sequence_position = cas9_module.input_type_to_sequence_and_position(
+        task_path, cas9_module.blastb_software if hasattr(cas9_module, 'blastb_software') else None,
+        input_type, fa_path, gff_pkl_path, task_id
+    )
+    if not fasta_sequence:
+        be_task.task_status = 'failed'
+        be_task.log = 'empty BLAST result'
+        be_task.save()
+        return {"error": "未能获取序列和位置信息"}
+
+    be_task.sequence_position = json.dumps(fasta_sequence_position)
+    be_task.save()
+
+    # 3) 生成 target seq（复用现有函数）
+    target_start, target_end, target_seq, target_seq_reverse = cas9_module.sequence_and_position_to_target_seq(
+        fa_path, fasta_sequence_position, spacerLength
+    )
+
+    # 4) family records 检查（复用）
+    family_records = cas9_module.target_to_ontarget(gff_path, gff_pkl_path, fasta_sequence_position['seqid'], target_start, target_end)
+    unique_ids = family_records['ID'].unique()
+    if len(unique_ids) >= 3:
+        be_task.task_status = 'failed'
+        be_task.log = f"错误：检测到 {len(unique_ids)} 个不同的基因 ID（{unique_ids.tolist()}），超过允许的最大数量（2）。"
+        be_task.save()
+        return {"error": "获取到的目标区域基因数目超出最大限制2"}
+
+    # 5) 生成 sgRNA 候选（复用 generate_sgRNA_dataframe 但需要返回更完整的信息）
+    sgRNA_dataframe, sgRNA_json = cas9_module.generate_sgRNA_dataframe(
+        family_records, target_seq, target_seq_reverse, target_start, target_end,
+        fasta_sequence_position['seqid'], pam, spacerLength, sgRNAModule, task_path
+    )
+
+    # 6) 运行 off-target 分析（复用 cas9 的 pipeline）
+    sam_file, intersect_file = cas9_module.run_batman(
+        settings.CONDA_ENV_PATH, task_path, fa_path, gff_path, task_id, os.path.join(settings.BASE_DIR, 'software', 'batmis', 'bin')
+    )
+    sam_pandas, intersect_pandas = cas9_module.intersect_to_pandas(fa_path, sam_file, intersect_file, spacerLength, pam)
+    guide_json = cas9_module.sam_intersect_pandas_to_json(sam_pandas, intersect_pandas, task_path)
+
+    # 7) 对每个 sgRNA 计算 base-editing 相关信息
+    table_rows = []
+    # 根据实际返回的数据结构调整字段访问
+    for idx, row in sgRNA_dataframe.iterrows():
+        # 修改字段访问方式以匹配实际数据结构
+        spacer_seq = row.get('sgRNA_seq')  # 根据实际数据结构调整
+
+        # 添加空值检查
+        if spacer_seq is None or not isinstance(spacer_seq, str):
+            print(f"警告: 发现空的或无效的 spacer_seq，跳过该行: {row.to_dict()}")
+            continue
+
+        # 验证序列长度
+        if len(spacer_seq) == 0:
+            print(f"警告: 发现空序列，跳过该行: {row.to_dict()}")
+            continue
+
+        # 计算 window 相对于 spacer 的 1-based index
+        try:
+            edits = apply_base_edit(spacer_seq, editor_type, (window_start, window_end))
+        except Exception as e:
+            print(f"处理spacer_seq时出错 {spacer_seq}: {str(e)}")
+            continue
+
+        if not edits:
+            # 没有可编辑碱基 -> 如果你想保留也可，但按需求通常过滤掉
+            continue
+
+        # 逐个编辑产生突变后的序列和氨基酸对比
+        for edit in edits:
+            pos = edit['pos']
+            ref = edit['ref']
+            alt = edit['alt']
+            new_spacer = edit['new_seq']
+            # 获取窗口内原始序列
+            try:
+                window_orig = spacer_seq[window_start - 1:window_end]
+                window_new = new_spacer[window_start - 1:window_end]
+            except Exception as e:
+                print(f"窗口序列提取失败: {str(e)}")
+                continue
+
+            # 为了计算氨基酸变化，需要把 spacer 对应的基因编码序列切成 codons 并翻译
+            # 使用 target_seq（包含上下游）来寻找 codon frame
+            try:
+                context_before = target_seq[max(0, pos - 30): pos + 30]  # 适度上下游
+                # 计算 AA 翻译（简化）
+                aa_before = translate_dna(context_before)
+                # 下面不做复杂替换，仅把窗口内变化翻译对比（非常保守）
+                # 取窗口三倍长度来翻译对比
+                window_ctx_before = window_orig * 3 if len(window_orig) >= 3 else window_orig
+                window_ctx_after = window_new * 3 if len(window_new) >= 3 else window_new
+                aa_w_before = translate_dna(window_ctx_before)
+                aa_w_after = translate_dna(window_ctx_after)
+
+                # 理化性变化（用第一个 AA 作为代表）
+                before_aa = aa_w_before[0] if len(aa_w_before) > 0 else 'X'
+                after_aa = aa_w_after[0] if len(aa_w_after) > 0 else 'X'
+                prop_before = AA_PROPERTIES.get(before_aa, 'unknown')
+                prop_after = AA_PROPERTIES.get(after_aa, 'unknown')
+                phys_change = f"{prop_before} -> {prop_after}"
+
+                # GC
+                gc = gc_content(spacer_seq)
+
+                # off-target info 从 guide_json 中提取
+                off_target_info = {}
+                if isinstance(guide_json, dict):
+                    if 'rows' in guide_json:
+                        # 如果是包含rows的结构
+                        for guide_row in guide_json['rows']:
+                            if guide_row.get('sgRNA_seq') == spacer_seq:
+                                off_target_info = guide_row.get('offtarget_json', {})
+                                break
+                    else:
+                        # 如果是直接的字典映射
+                        off_target_info = guide_json.get(spacer_seq, {})
+
+                # 根据实际数据结构调整字段
+                row_obj = {
+                    "spacer_seq": spacer_seq,
+                    "position": {
+                        "start": row.get('sgRNA_start') or row.get('start'),
+                        "end": row.get('sgRNA_end') or row.get('end'),
+                        "strand": row.get('sgRNA_strand') or row.get('strand')
+                    },
+                    "window_orig": window_orig,
+                    "window_new": window_new,
+                    "ref_base": ref,
+                    "alt_base": alt,
+                    "aa_before": aa_w_before,
+                    "aa_after": aa_w_after,
+                    "aa_phys_change": phys_change,
+                    "gc_content": gc,
+                    "off_target": off_target_info,
+                    # 添加额外的有用信息
+                    "sgRNA_id": row.get('sgRNA_id'),
+                    "sgRNA_type": row.get('sgRNA_type')
+                }
+                table_rows.append(row_obj)
+            except Exception as e:
+                print(f"处理编辑结果时出错: {str(e)}")
+                continue
+
+    # 8) 保存数据库字段
+    be_task.sgRNA_json = guide_json
+    be_task.sgRNA_table = table_rows
+    be_task.task_status = 'finished'
+    be_task.save()
+    # 9) 添加 JBrowse 信息（使用base editor专用函数）
+    # guide_with_jbrowse = add_Jbrowse_to_json_be(str(task_id), task_path, be_task.sequence_position, guide_json, name_db)
+    # be_task.sgRNA_with_JBrowse_json = guide_with_jbrowse
+    # be_task.save()
+
+    # 返回给前端：表格 + jbrowse info（和你期望的格式一致）
+    return {
+        "TableData": table_rows,
+        "total" : len(table_rows),
+        "InputData": {
+            "inputSequence": inputSequence,
+            "pam": pam,
+            "spacerLength": spacerLength,
+            "sgRNAModule": sgRNAModule,
+            "name_db": name_db,
+            "editor_type": editor_type,
+            "Base editing window": base_window
+        }
+    }
+
+
+

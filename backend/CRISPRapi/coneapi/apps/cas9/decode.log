@@ -1,0 +1,18 @@
+
+********************************************************************************************
+*                            batdecode Version :3.00                                       *
+********************************************************************************************
+27 Genomes Loaded..
+Forward index loaded ...
+Reverse index loaded ...
+Using the genome files
+ /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/Gossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.bwt	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/Gossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.fmv	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/Gossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.sa
+ /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/revGossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.bwt	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/revGossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.fmv	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/revGossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.sa
+Input File : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/apps/cas9/t/task_output/test4/test4.bin	  Output File : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/apps/cas9/t/task_output/test4/test4.txt 
+Length of a tag : 23
+Using location file : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/Gossypium_hirsutum_T2T-Jin668_HZAU_genome.fa.ann.location
+100%
+Total Tags/Hits[Rejected Hits] 106 / 450340[0]
+
+ Time Taken  - 6 Seconds ..
+ 

@@ -1,0 +1,18 @@
+
+********************************************************************************************
+*                            batdecode Version :3.00                                       *
+********************************************************************************************
+167 Genomes Loaded..
+Forward index loaded ...
+Reverse index loaded ...
+Using the genome files
+ /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/GCF_019175385.1_ASM1917538v2_Red_genomic.fa.bwt	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/GCF_019175385.1_ASM1917538v2_Red_genomic.fa.fmv	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/GCF_019175385.1_ASM1917538v2_Red_genomic.fa.sa
+ /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/revGCF_019175385.1_ASM1917538v2_Red_genomic.fa.bwt	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/revGCF_019175385.1_ASM1917538v2_Red_genomic.fa.fmv	 /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/revGCF_019175385.1_ASM1917538v2_Red_genomic.fa.sa
+Input File : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/work/crisprKnockinTasks/50a83914-f824-4ee8-b485-751cf1ac224e/50a83914-f824-4ee8-b485-751cf1ac224e.bin	  Output File : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/work/crisprKnockinTasks/50a83914-f824-4ee8-b485-751cf1ac224e/50a83914-f824-4ee8-b485-751cf1ac224e.txt 
+Length of a tag : 23
+Using location file : /mhds/hd6platform/biohuaxing/zhangxueke/Project/CRISPRone/backend/CRISPRapi/coneapi/database/TargetGenome/GCF_019175385.1_ASM1917538v2_Red_genomic/GCF_019175385.1_ASM1917538v2_Red_genomic.fa.ann.location
+27%->31%->39%->45%->52%->60%->63%->69%->76%->80%->85%->88%->92%->95%->100%
+Total Tags/Hits[Rejected Hits] 343 / 557071[0]
+
+ Time Taken  - 4 Seconds ..
+ 

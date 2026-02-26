@@ -1,0 +1,27 @@
+from django.db import models
+
+class result_baseediting_list(models.Model):
+    def __str__(self):
+        return self.task_id
+
+    task_id = models.CharField(max_length=64, primary_key=True)
+    pam_type = models.CharField(max_length=30)
+    name_db = models.CharField(max_length=255)
+    input_sequence = models.TextField()
+    sequence_position = models.TextField(default="")
+    sgRNA_module = models.CharField(max_length=20)
+    spacer_length = models.PositiveSmallIntegerField()
+
+    # base editing specific
+    editor_type = models.CharField(max_length=30)  # ABE / CBE / GBE / ABE+CBE
+    base_editing_window = models.CharField(max_length=20)  # e.g., "14-17"
+
+    # outputs
+    sgRNA_with_JBrowse_json = models.JSONField(default=dict)
+    # table results: 每个候选 sgRNA 的表格信息（list of dict）
+    sgRNA_table = models.JSONField(default=list)
+
+    task_status = models.CharField(max_length=20)
+    log = models.TextField(default="")
+    submit_time = models.DateTimeField(auto_now_add=True)
+    update_time = models.DateTimeField(auto_now=True)

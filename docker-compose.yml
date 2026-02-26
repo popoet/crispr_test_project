@@ -1,0 +1,40 @@
+services:  
+  mysql:
+    image: mysql:8.0.42
+    restart: always
+    container_name: CRISPRone-mysql
+    environment:
+      - "MYSQL_ROOT_PASSWORD=BiohxRoot2023"
+      - "MYSQL_USER=crispr1_user"
+      - "MYSQL_PASSWORD=crispr1!2320"
+      - "MYSQL_DATABASE=crispr1"
+      - "TZ=Asia/Shanghai"
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --explicit_defaults_for_timestamp=true
+    ports:
+      - 13805:3306
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./logs/mysql:/logs
+    networks:
+      - CRISPRone-network
+
+  redis:
+    image: redis:7.2.7-alpine3.21
+    restart: always
+    container_name: CRISPRone-redis
+    ports:
+      - "13806:6379"
+    command:
+      ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./conf/redis/master.conf:/usr/local/etc/redis/redis.conf
+      - ./data/redis/master:/data
+    networks:
+      - CRISPRone-network
+
+networks:
+  CRISPRone-network:
+    driver: bridge
