@@ -1,0 +1,22 @@
+r250.o: r250.c /usr/include/stdc-predef.h \
+ /usr/local/gcc-11.2.0/lib/gcc/x86_64-pc-linux-gnu/11.2.0/include-fixed/limits.h \
+ /usr/local/gcc-11.2.0/lib/gcc/x86_64-pc-linux-gnu/11.2.0/include-fixed/syslimits.h \
+ /usr/include/limits.h /usr/include/features.h /usr/include/sys/cdefs.h \
+ /usr/include/bits/wordsize.h /usr/include/gnu/stubs.h \
+ /usr/include/gnu/stubs-64.h /usr/include/bits/posix1_lim.h \
+ /usr/include/bits/local_lim.h /usr/include/linux/limits.h \
+ /usr/include/bits/posix2_lim.h r250.h
+/usr/include/stdc-predef.h:
+/usr/local/gcc-11.2.0/lib/gcc/x86_64-pc-linux-gnu/11.2.0/include-fixed/limits.h:
+/usr/local/gcc-11.2.0/lib/gcc/x86_64-pc-linux-gnu/11.2.0/include-fixed/syslimits.h:
+/usr/include/limits.h:
+/usr/include/features.h:
+/usr/include/sys/cdefs.h:
+/usr/include/bits/wordsize.h:
+/usr/include/gnu/stubs.h:
+/usr/include/gnu/stubs-64.h:
+/usr/include/bits/posix1_lim.h:
+/usr/include/bits/local_lim.h:
+/usr/include/linux/limits.h:
+/usr/include/bits/posix2_lim.h:
+r250.h:

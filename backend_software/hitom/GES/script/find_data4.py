@@ -1,0 +1,17 @@
+import os
+
+# 读取fq1.txt文件内容
+with open('fq1.txt', 'r') as file:
+    lines = file.readlines()
+
+# 打开list.txt文件准备写入
+with open('list.txt', 'w') as outfile:
+    for line in lines:
+        # 去除行尾的换行符
+        line = line.strip()
+        # 提取样本名
+        sample_name = os.path.basename(os.path.dirname(os.path.dirname(line)))
+        # 构建新路径，替换原始路径的根目录部分
+        new_path_part1 = line
+        # 写入到list.txt文件
+        outfile.write(f"{sample_name}\t{new_path_part1}\n")
