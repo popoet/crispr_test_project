@@ -1,9 +1,11 @@
 import os
 import uuid
 import shutil
+import threading
 
 import pandas as pd
 from django.conf import settings
+from django.core.cache import cache
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -11,6 +13,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import EditAnalysisFiles, EditAnalysisTasks
 from .tasks import runEditAnalysis
+
+# 用于并发控制的锁
+_task_cleanup_lock = threading.Lock()
+_task_execution_lock = threading.Lock()
+
+# 重试限制配置
+MAX_RETRY_COUNT = 3  # 最大重试次数
+RETRY_CACHE_TIMEOUT = 3600  # 重试计数缓存时间（秒）
 
 
 # 计算预估时间
@@ -36,28 +46,97 @@ class EditAnalysisView(APIView):
         if not fq_md5 or not target_md5 or start is None or end is None:
             return Response({"error": "Missing parameter"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 查任务
-        task = EditAnalysisTasks.objects.filter(
+        # 使用全局锁防止同一参数的并发执行
+        task_key = f"{fq_md5}_{target_md5}_{start}_{end}"
+        with _task_execution_lock:
+            return self._process_request(fq_md5, target_md5, start, end)
+
+    def _process_request(self, fq_md5, target_md5, start, end):
+        """
+        实际处理请求的核心逻辑
+        包含完整的任务重试和并发处理逻辑
+        """
+        # 检查数据库中是否已存在相同且已完成的任务
+        completed_task = EditAnalysisTasks.objects.filter(
             fq_files_md5=fq_md5,
             target_file_md5=target_md5,
             start=start,
-            end=end
+            end=end,
+            status__in=["success", "partial_success"]
         ).first()
+        
+        if completed_task and completed_task.result_data:
+            return Response({
+                "status": completed_task.status,
+                "task_id": str(completed_task.task_id),
+                "data": completed_task.result_data,
+                "message": "任务已完成，返回缓存结果"
+            })
 
-        if task:
-            if task.status == "success" and task.result_data:
-                return Response({"status": "success", "task_id": str(task.task_id), "data": task.result_data})
-            elif task.status == "partial_success" and task.result_data:
-                return Response({"status": "partial_success", "task_id": str(task.task_id), "data": task.result_data})
-            elif task.status == "analysis":
-                return Response({"status": "analysis", "task_id": str(task.task_id), "message": "Task is being analyzed"})
-            elif task.status == "failure":
-                reason = task.result_data.get("reason") if isinstance(task.result_data, dict) else None
+        # 检查是否已存在相同但失败的任务
+        failed_tasks = EditAnalysisTasks.objects.filter(
+            fq_files_md5=fq_md5,
+            target_file_md5=target_md5,
+            start=start,
+            end=end,
+            status="failure"
+        )
+        
+        if failed_tasks.exists():
+            # 生成任务标识符用于重试计数
+            task_identifier = f"edit_{fq_md5}_{target_md5}_{start}_{end}"
+            
+            # 从Redis获取重试次数
+            retry_count = cache.get(task_identifier, 0)
+            
+            # 如果超过最大重试次数，返回错误信息而不是无限重试
+            if retry_count >= MAX_RETRY_COUNT:
                 return Response({
                     "status": "failure",
-                    "task_id": str(task.task_id),
-                    "reason": reason or "Analysis error"
-                })
+                    "error": f"任务已达到最大重试次数({MAX_RETRY_COUNT}次)，请检查输入参数或联系管理员",
+                    "retry_count": retry_count,
+                    "max_retries": MAX_RETRY_COUNT
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            
+            # 增加重试计数
+            cache.set(task_identifier, retry_count + 1, timeout=RETRY_CACHE_TIMEOUT)
+            
+            # 自动清理所有失败的任务并重新执行
+            for failed_task in failed_tasks:
+                old_task_id = str(failed_task.task_id)
+                # 安全清理旧任务
+                cleanup_result = self._safe_cleanup_task(old_task_id)
+                if not cleanup_result['success']:
+                    return Response({
+                        "status": "failure",
+                        "error": "清理旧任务失败",
+                        "details": cleanup_result['error']
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # 继续执行下面的新任务创建逻辑
+
+        # 检查是否已存在正在进行中或等待中的任务
+        existing_task = EditAnalysisTasks.objects.filter(
+            fq_files_md5=fq_md5,
+            target_file_md5=target_md5,
+            start=start,
+            end=end,
+            status="analysis"
+        ).first()
+        
+        if existing_task:
+            # 返回任务状态信息
+            return Response({
+                "status": "analysis",
+                "task_id": str(existing_task.task_id),
+                "message": "任务正在分析中",
+                "create_time": existing_task.create_time.isoformat(),
+                "estimated_time": get_estimated_time(existing_task),
+                "retry_info": self._get_retry_info(fq_md5, target_md5, start, end)
+            }, status=status.HTTP_202_ACCEPTED)
+
+        # 在创建新任务前清理可能的孤立数据
+        self._cleanup_orphaned_data(fq_md5, target_md5, start, end)
 
         # 查文件
         fq_file = EditAnalysisFiles.objects.filter(file_md5=fq_md5).first()
@@ -89,14 +168,90 @@ class EditAnalysisView(APIView):
 
         runEditAnalysis.delay(str(task.task_id), task_dir, start, end, fq_files_path, target_file_path)
 
-        return Response({"status": "analysis",
-                         "task_id": str(task.task_id),
-                         "message": "Task submitted, currently being analyzed",
-                         "create_time": task.create_time.isoformat(),
-                         "estimated_time": get_estimated_time(task)})
+        return Response({
+            "status": "analysis",
+            "task_id": str(task.task_id),
+            "message": "任务已提交，正在分析中",
+            "create_time": task.create_time.isoformat(),
+            "estimated_time": get_estimated_time(task),
+            "retry_info": self._get_retry_info(fq_md5, target_md5, start, end)
+        }, status=status.HTTP_202_ACCEPTED)
+
+    def _safe_cleanup_task(self, task_id):
+        """
+        安全地清理任务相关的数据库记录和文件
+        使用锁防止并发问题
+        """
+        with _task_cleanup_lock:
+            try:
+                # 删除数据库记录
+                try:
+                    task_record = EditAnalysisTasks.objects.get(task_id=task_id)
+                    task_record.delete()
+                except EditAnalysisTasks.DoesNotExist:
+                    # 记录不存在，但继续尝试清理文件
+                    pass
+                
+                # 删除工作目录
+                task_work_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis', 'EA_tasks', task_id)
+                
+                # 安全删除目录
+                if os.path.exists(task_work_dir):
+                    try:
+                        shutil.rmtree(task_work_dir)
+                    except Exception as e:
+                        # 记录警告但不中断流程
+                        print(f"警告：删除目录 {task_work_dir} 失败: {str(e)}")
+                
+                return {'success': True}
+                
+            except Exception as e:
+                return {'success': False, 'error': str(e)}
+
+    def _cleanup_orphaned_data(self, fq_md5, target_md5, start, end):
+        """
+        清理孤立的数据（有记录但无文件，或有文件但无记录）
+        """
+        with _task_cleanup_lock:
+            # 查找可能存在的孤立记录
+            orphaned_records = EditAnalysisTasks.objects.filter(
+                fq_files_md5=fq_md5,
+                target_file_md5=target_md5,
+                start=start,
+                end=end
+            )
+            
+            for record in orphaned_records:
+                # 检查工作目录是否存在
+                task_work_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis', 'EA_tasks', str(record.task_id))
+                
+                if not os.path.exists(task_work_dir):
+                    # 目录不存在，可能是孤立记录
+                    if record.status in ['analysis']:
+                        # 对于未完成的任务，如果目录不存在则标记为失败
+                        record.status = 'failure'
+                        record.result_data = {'reason': '任务目录丢失，可能被意外删除'}
+                        record.save()
+                        print(f"标记丢失任务为失败: {record.task_id}")
+                    elif record.status == 'failure':
+                        # 失败任务且目录不存在，可以安全删除记录
+                        print(f"清理失败任务记录: {record.task_id}")
+                        record.delete()
+
+    def _get_retry_info(self, fq_md5, target_md5, start, end):
+        """
+        获取重试相关信息
+        """
+        task_identifier = f"edit_{fq_md5}_{target_md5}_{start}_{end}"
+        retry_count = cache.get(task_identifier, 0)
+        return {
+            "retry_count": retry_count,
+            "max_retries": MAX_RETRY_COUNT,
+            "can_retry": retry_count < MAX_RETRY_COUNT
+        }
 
 
-# # 接口2，文件上传
+# 接口2，文件上传
 # class FileUploadView(APIView):
 #     """
 #     接口2：文件上传
@@ -242,6 +397,18 @@ class TaskResultView(APIView):
         except EditAnalysisTasks.DoesNotExist:
             return Response({"error": "Task does not exist"}, status=404)
 
+        # 获取重试信息
+        retry_info = None
+        if task.status == "failure":
+            # 从任务参数重建任务标识符
+            task_identifier = f"edit_{task.fq_files_md5}_{task.target_file_md5}_{task.start}_{task.end}"
+            retry_count = cache.get(task_identifier, 0)
+            retry_info = {
+                "retry_count": retry_count,
+                "max_retries": MAX_RETRY_COUNT,
+                "can_retry": retry_count < MAX_RETRY_COUNT
+            }
+
         if task.status == "analysis":
             task_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_tasks/{task_id}/")
             logs_dir = os.path.join(task_dir, "logs")
@@ -263,19 +430,44 @@ class TaskResultView(APIView):
                 "elapsed_time": elapsed_time,
                 "create_time": task.create_time.isoformat(),
                 "estimated_time": get_estimated_time(task),
+                "retry_info": retry_info
             })
 
         if task.status == "analysis":
-            return Response({"status": "analysis", "task_id": str(task.task_id), "message": "Task is being analyzed"})
+            return Response({
+                "status": "analysis", 
+                "task_id": str(task.task_id), 
+                "message": "Task is being analyzed",
+                "retry_info": retry_info
+            })
         elif task.status == "success":
-            return Response({"status": "success", "task_id": str(task.task_id), "data": task.result_data})
+            return Response({
+                "status": "success", 
+                "task_id": str(task.task_id), 
+                "data": task.result_data,
+                "retry_info": retry_info
+            })
         elif task.status == "partial_success":
-            return Response({"status": "partial_success", "task_id": str(task.task_id), "data": task.result_data})
+            return Response({
+                "status": "partial_success", 
+                "task_id": str(task.task_id), 
+                "data": task.result_data,
+                "retry_info": retry_info
+            })
         elif task.status == "failure":
             reason = task.result_data.get("reason") if isinstance(task.result_data, dict) else None
-            return Response({"status": "failure", "task_id": str(task.task_id), "reason": reason or "Unknown error"})
+            return Response({
+                "status": "failure", 
+                "task_id": str(task.task_id), 
+                "reason": reason or "Unknown error",
+                "retry_info": retry_info
+            })
 
-        return Response({"status": "unknown", "task_id": str(task.task_id)}, status=500)
+        return Response({
+            "status": "unknown", 
+            "task_id": str(task.task_id),
+            "retry_info": retry_info
+        }, status=500)
 
 
 # 接口4，任务文件预览
@@ -329,31 +521,28 @@ class ResultFileContentView(APIView):
 # 接口5，任务删除
 class DeleteTaskView(APIView):
     """
-    测试用：删除任务及对应文件夹
+    安全删除任务及对应文件夹
+    使用统一的安全清理机制
     """
     def post(self, request):
         task_id = request.data.get("task_id")
         if not task_id:
             return Response({"error": "Missing task_id parameter"}, status=400)
 
-        try:
-            task = EditAnalysisTasks.objects.get(task_id=task_id)
-        except EditAnalysisTasks.DoesNotExist:
-            return Response({"error": "Task does not exist"}, status=404)
-
-        # 删除任务文件夹
-        task_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_tasks/{task_id}/")
-        if os.path.exists(task_dir):
-            try:
-                shutil.rmtree(task_dir)
-            except Exception as e:
-                print(f"删除任务文件夹出错: {str(e)}")
-                return Response({"error": f"Failed to delete task folder"}, status=500)
-
-        # 删除数据库记录
-        task.delete()
-
-        return Response({"status": "success", "message": f"Task {task_id} has been deleted"})
+        # 使用安全清理方法
+        cleanup_result = EditAnalysisView()._safe_cleanup_task(task_id)
+        
+        if cleanup_result['success']:
+            return Response({
+                "status": "success", 
+                "message": f"Task {task_id} has been deleted successfully"
+            })
+        else:
+            return Response({
+                "status": "error",
+                "error": "Failed to delete task",
+                "details": cleanup_result['error']
+            }, status=500)
 
 
 

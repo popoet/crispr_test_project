@@ -2,9 +2,12 @@ import os
 import subprocess
 import uuid
 import json
+import shutil
+import threading
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import FileResponse, HttpResponseNotFound, HttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -12,6 +15,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from . import crisprEpigenome, models
 from .tasks import run_crispr_epigenome_analysis
+
+# 用于并发控制的锁
+_task_cleanup_lock = threading.Lock()
+_task_execution_lock = threading.Lock()
+
+# 重试限制配置
+MAX_RETRY_COUNT = 3  # 最大重试次数
+RETRY_CACHE_TIMEOUT = 3600  # 重试计数缓存时间（秒）
 
 class CrisprEpigenomeExecuteView(APIView):
     """
@@ -32,7 +43,17 @@ class CrisprEpigenomeExecuteView(APIView):
         spacerLength = request.data.get('spacerLength')
         sgRNAModule = request.data.get('sgRNAModule')
         name_db = request.data.get('name_db')
+        
+        # 使用全局锁防止同一参数的并发执行
+        task_key = f"{inputSequence}_{pam}_{spacerLength}_{sgRNAModule}_{name_db}"
+        with _task_execution_lock:
+            return self._process_request(inputSequence, pam, spacerLength, sgRNAModule, name_db)
 
+    def _process_request(self, inputSequence, pam, spacerLength, sgRNAModule, name_db):
+        """
+        实际处理CrisprEpigenome请求的核心逻辑
+        包含完整的任务重试和并发处理逻辑
+        """
         # 检查数据库中是否已存在相同且已完成的任务
         result_crispr_epigenome = models.result_crispr_epigenome_list.objects.filter(input_sequence=inputSequence,
                                                              pam_type=pam,
@@ -42,15 +63,16 @@ class CrisprEpigenomeExecuteView(APIView):
                                                              task_status="finished",
                                                              sgRNA_with_JBrowse_json__isnull=False)
         if result_crispr_epigenome.first():
+            task_record = result_crispr_epigenome.first()
             # 从文件中读取结果数据
-            result_file_path = os.path.join(settings.BASE_DIR, result_crispr_epigenome.first().sgRNA_with_JBrowse_json)
+            result_file_path = os.path.join(settings.BASE_DIR, task_record.sgRNA_with_JBrowse_json)
             if os.path.exists(result_file_path):
                 with open(result_file_path, 'r') as f:
                     response_data = json.load(f)
                 return Response(response_data, status=status.HTTP_200_OK)
             else:
                 # 如果文件不存在，清除记录并重新处理
-                result_crispr_epigenome.first().delete()
+                self._safe_cleanup_task(task_record.task_id)
 
         # 检查是否已存在相同但失败的任务
         failed_crispr_epigenome = models.result_crispr_epigenome_list.objects.filter(input_sequence=inputSequence,
@@ -59,13 +81,37 @@ class CrisprEpigenomeExecuteView(APIView):
                                                              sgRNA_module=sgRNAModule,
                                                              name_db=name_db,
                                                              task_status="failed")
-        if failed_crispr_epigenome.first():
-            # 返回错误信息，提醒用户重新提交
-            return Response({
-                "msg": "任务之前执行失败",
-                "error": failed_crispr_epigenome.first().log,
-                "suggest": "请重新提交任务"
-            }, status=status.HTTP_400_BAD_REQUEST)
+        if failed_crispr_epigenome.exists():
+            # 生成任务标识符用于重试计数
+            task_identifier = f"crisprEpigenome_{inputSequence}_{pam}_{spacerLength}_{sgRNAModule}_{name_db}"
+            
+            # 从Redis获取重试次数
+            retry_count = cache.get(task_identifier, 0)
+            
+            # 如果超过最大重试次数，返回错误信息而不是无限重试
+            if retry_count >= MAX_RETRY_COUNT:
+                return Response({
+                    "msg": f"任务已达到最大重试次数({MAX_RETRY_COUNT}次)，请检查输入参数或联系管理员",
+                    "error": "重试次数超限",
+                    "retry_count": retry_count,
+                    "max_retries": MAX_RETRY_COUNT
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            
+            # 增加重试计数
+            cache.set(task_identifier, retry_count + 1, timeout=RETRY_CACHE_TIMEOUT)
+            
+            # 自动清理所有失败的任务并重新执行
+            for failed_task in failed_crispr_epigenome:
+                old_task_id = failed_task.task_id
+                # 安全清理旧任务
+                cleanup_result = self._safe_cleanup_task(old_task_id)
+                if not cleanup_result['success']:
+                    return Response({
+                        "msg": "清理旧任务失败",
+                        "error": cleanup_result['error']
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # 继续执行下面的新任务创建逻辑
 
         # 检查是否已存在正在进行中或等待中的任务
         existing_crispr_epigenome = models.result_crispr_epigenome_list.objects.filter(input_sequence=inputSequence,
@@ -74,20 +120,25 @@ class CrisprEpigenomeExecuteView(APIView):
                                                                sgRNA_module=sgRNAModule,
                                                                name_db=name_db)
         pending_or_running_crispr_epigenome = existing_crispr_epigenome.filter(task_status__in=['pending', 'running'])
-        if pending_or_running_crispr_epigenome.first():
-            # 返回任务正在处理中的信息和预估完成时间
-            task_record = pending_or_running_crispr_epigenome.first()
+        if pending_or_running_crispr_epigenome.exists():
+            # 返回最新的任务状态信息
+            latest_task = pending_or_running_crispr_epigenome.latest('submit_time')
             # 简单估算：假设任务需要5分钟完成
-            estimated_completion = task_record.submit_time + timedelta(minutes=5)
+            estimated_completion = latest_task.submit_time + timedelta(minutes=5)
             now = timezone.now()
             remaining_time = estimated_completion - now if estimated_completion > now else timedelta(minutes=1)
             
             return Response({
                 "msg": "任务正在分析中",
-                "task_id": task_record.task_id,
+                "task_id": latest_task.task_id,
+                "status": latest_task.task_status,
                 "estimated_completion": estimated_completion.isoformat(),
-                "remaining_time_seconds": remaining_time.total_seconds()
+                "remaining_time_seconds": remaining_time.total_seconds(),
+                "retry_info": self._get_retry_info(inputSequence, pam, spacerLength, sgRNAModule, name_db)
             }, status=status.HTTP_202_ACCEPTED)
+
+        # 在创建新任务前再次清理可能的孤立数据
+        self._cleanup_orphaned_data(inputSequence, pam, spacerLength, sgRNAModule, name_db)
 
         # 验证参数
         try:
@@ -117,8 +168,94 @@ class CrisprEpigenomeExecuteView(APIView):
         return Response({
             "msg": "任务已提交",
             "task_id": task_id,
-            "status": "pending"
+            "status": "pending",
+            "retry_info": self._get_retry_info(inputSequence, pam, spacerLength, sgRNAModule, name_db)
         }, status=status.HTTP_202_ACCEPTED)
+    def _safe_cleanup_task(self, task_id):
+        """
+        安全地清理任务相关的数据库记录和文件
+        使用锁防止并发问题
+        """
+        with _task_cleanup_lock:
+            try:
+                # 删除数据库记录
+                try:
+                    task_record = models.result_crispr_epigenome_list.objects.get(task_id=task_id)
+                    task_record.delete()
+                except models.result_crispr_epigenome_list.DoesNotExist:
+                    # 记录不存在，但继续尝试清理文件
+                    pass
+                
+                # 删除工作目录
+                task_work_dir = os.path.join(settings.BASE_DIR, 'work', 'crisprEpigenomeTasks', task_id)
+                task_tmp_dir = os.path.join(settings.BASE_DIR, 'work', 'crisprEpigenomeTmp', task_id)
+                
+                # 安全删除目录
+                for dir_path in [task_work_dir, task_tmp_dir]:
+                    if os.path.exists(dir_path):
+                        try:
+                            shutil.rmtree(dir_path)
+                        except Exception as e:
+                            # 记录警告但不中断流程
+                            print(f"警告：删除目录 {dir_path} 失败: {str(e)}")
+                
+                return {'success': True}
+                
+            except Exception as e:
+                return {'success': False, 'error': str(e)}
+
+    def _cleanup_orphaned_data(self, input_sequence, pam_type, spacer_length, sgRNA_module, name_db):
+        """
+        清理孤立的数据（有记录但无文件，或有文件但无记录）
+        """
+        with _task_cleanup_lock:
+            # 查找可能存在的孤立记录
+            orphaned_records = models.result_crispr_epigenome_list.objects.filter(
+                input_sequence=input_sequence,
+                pam_type=pam_type,
+                spacer_length=spacer_length,
+                sgRNA_module=sgRNA_module,
+                name_db=name_db
+            )
+            
+            for record in orphaned_records:
+                # 检查文件是否存在
+                if record.sgRNA_with_JBrowse_json and record.task_status == 'finished':
+                    result_file_path = os.path.join(settings.BASE_DIR, record.sgRNA_with_JBrowse_json)
+                    if not os.path.exists(result_file_path):
+                        # 文件不存在，删除记录
+                        print(f"清理孤立记录: {record.task_id}")
+                        record.delete()
+                        continue
+                
+                # 检查工作目录是否存在
+                task_work_dir = os.path.join(settings.BASE_DIR, 'work', 'crisprEpigenomeTasks', record.task_id)
+                task_tmp_dir = os.path.join(settings.BASE_DIR, 'work', 'crisprEpigenomeTmp', record.task_id)
+                
+                if not os.path.exists(task_work_dir) and not os.path.exists(task_tmp_dir):
+                    # 目录都不存在，可能是孤立记录
+                    if record.task_status in ['pending', 'running']:
+                        # 对于未完成的任务，如果目录不存在则标记为失败
+                        record.task_status = 'failed'
+                        record.log = '任务目录丢失，可能被意外删除'
+                        record.save()
+                        print(f"标记丢失任务为失败: {record.task_id}")
+                    elif record.task_status == 'failed':
+                        # 失败任务且目录不存在，可以安全删除记录
+                        print(f"清理失败任务记录: {record.task_id}")
+                        record.delete()
+
+    def _get_retry_info(self, input_sequence, pam_type, spacer_length, sgRNA_module, name_db):
+        """
+        获取重试相关信息
+        """
+        task_identifier = f"crisprEpigenome_{input_sequence}_{pam_type}_{spacer_length}_{sgRNA_module}_{name_db}"
+        retry_count = cache.get(task_identifier, 0)
+        return {
+            "retry_count": retry_count,
+            "max_retries": MAX_RETRY_COUNT,
+            "can_retry": retry_count < MAX_RETRY_COUNT
+        }
 
 
 class CrisprEpigenomeJbrowseAPI(APIView):
