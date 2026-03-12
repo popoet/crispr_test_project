@@ -100,6 +100,12 @@ def initial_sgRNA(pamType):
 
 def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_db):
     conda_env_path = settings.CONDA_ENV_PATH
+    # 确保应用的任务目录和临时目录存在
+    tasks_base_dir = os.path.join(settings.BASE_DIR, 'work', 'fanZorTasks')
+    tmp_base_dir = os.path.join(settings.BASE_DIR, 'work', 'fanZorTmp')
+    os.makedirs(tasks_base_dir, exist_ok=True)
+    os.makedirs(tmp_base_dir, exist_ok=True)
+    
     task_path = os.path.join(settings.BASE_DIR, 'work', 'fanZorTasks', str(task_id))
     os.makedirs(task_path, exist_ok=True)
     
@@ -167,6 +173,22 @@ def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_d
         sgRNA_dataframe, sgRNA_json = generate_sgRNA_dataframe(family_records, target_seq, target_seq_reverse, target_start,
                                                                target_end, fasta_sequence_position['seqid'], pam,
                                                                spacerLength, sgRNAModule, task_path, task_logger)
+                
+        # 6.5、根据输入类型决定是否过滤 sgRNA
+        # 自定义序列输入（input_type['seq']）不过滤外显子，保留整个序列上的所有 sgRNA
+        # 基因 ID 或位置范围输入需要过滤，只保留外显子上的 sgRNA
+        if input_type['seq']:
+            task_logger.info("自定义序列输入，保留整个序列上的所有 sgRNA（不过滤外显子）")
+        else:
+            task_logger.info("基因 ID 或位置范围输入，过滤只保留外显子上的 sgRNA")
+            sgRNA_dataframe = filter_sgRNA_by_exon(sgRNA_dataframe, family_records, task_logger)
+                
+        # 重新生成 JSON
+        sgRNA_json = sgRNA_dataframe.to_json(orient='records')
+        json_handle = json.loads(sgRNA_json)
+        json_handle = {'total': len(json_handle), 'rows': json_handle}
+        with open('{}/Guide.json'.format(task_path), 'w') as file_handle:
+            json.dump(json_handle, file_handle)
         # 7、运行 BATMAN 工具进行 off-target 分析
         sam_file, intersect_file = run_batman(conda_env_path, task_path, fa_path, gff_path, task_id, batmis_path, task_logger)
         sam_pandas, intersect_pandas = intersect_to_pandas(fa_path, sam_file, intersect_file, spacerLength, pam, task_logger)
@@ -359,6 +381,81 @@ def run_batman(conda_env_path, task_path, fa_path, gff_path, task_id, batmis_pat
 
 
 # 根据目标 DNA 序列（正向和反向互补）识别潜在的 sgRNA 位点，并将这些候选位点整理成结构化数据（DataFrame 和 JSON），供后续分析使用。
+def filter_sgRNA_by_exon(sgRNA_dataframe, family_records, task_logger=None):
+    """
+    过滤 sgRNA，只保留完全位于外显子（exon）区域内的 sgRNA
+    
+    规则：
+    1. sgRNA 必须完全在一个或多个外显子区域内（可以正好在边界上）
+    2. 如果 sgRNA 超出外显子边界（即使只超出 1bp），也会被过滤掉
+    
+    参数:
+        sgRNA_dataframe: 包含 sgRNA 信息的 DataFrame
+        family_records: 基因家族记录 DataFrame
+        task_logger: 日志记录器
+    
+    返回:
+        过滤后的 sgRNA_dataframe
+    """
+    try:
+        if sgRNA_dataframe.empty:
+            return sgRNA_dataframe
+        
+        # 筛选出 featuretype 为'exon'的记录
+        exon_records = family_records[family_records['featuretype'] == 'exon']
+        
+        if exon_records.empty:
+            if task_logger:
+                task_logger.warning("没有找到外显子记录，所有 sgRNA 将被过滤")
+            # 如果没有外显子记录，返回空的 DataFrame
+            return sgRNA_dataframe.iloc[0:0]
+        
+        # 创建一个列表来存储符合条件的 sgRNA 索引
+        valid_indices = []
+        filtered_count = 0
+        
+        # 遍历每个 sgRNA
+        for idx, row in sgRNA_dataframe.iterrows():
+            # 解析 sgRNA 位置
+            seqid, pos_str = row['sgRNA_position'].split(':')
+            sgRNA_start = int(pos_str)
+            sgRNA_end = sgRNA_start + len(row['sgRNA_seq']) - 1
+            
+            # 检查该 sgRNA 是否完全在任何一个外显子区域内
+            is_in_exon = False
+            for _, exon_row in exon_records.iterrows():
+                if exon_row['seqid'] == seqid:
+                    exon_start = exon_row['start']
+                    exon_end = exon_row['end']
+                    
+                    # 判断 sgRNA 是否完全在外显子内（包括正好在边界上）
+                    # sgRNA_start >= exon_start 且 sgRNA_end <= exon_end
+                    if sgRNA_start >= exon_start and sgRNA_end <= exon_end:
+                        is_in_exon = True
+                        break
+            
+            if is_in_exon:
+                valid_indices.append(idx)
+            else:
+                filtered_count += 1
+        
+        # 过滤 sgRNA，只保留完全在外显子内的
+        filtered_sgRNA = sgRNA_dataframe.loc[valid_indices].reset_index(drop=True)
+        
+        if task_logger:
+            task_logger.info(f"sgRNA 过滤：原始 {len(sgRNA_dataframe)} 条，过滤后 {len(filtered_sgRNA)} 条，过滤掉 {filtered_count} 条（只保留完全在外显子内的 sgRNA）")
+            if filtered_count > 0:
+                task_logger.info(f"被过滤的 sgRNA 原因：超出外显子边界")
+        
+        return filtered_sgRNA
+        
+    except Exception as e:
+        if task_logger:
+            task_logger.error(f"过滤 sgRNA 时发生错误：{str(e)}", exc_info=True)
+        # 如果出错，返回原始数据（不中断流程）
+        return sgRNA_dataframe
+
+
 def generate_sgRNA_dataframe(family_records, target_seq, target_seq_reverse, target_start, target_end, target_seqid,
                              pam, spacerLength, sgRNAModule, task_path, task_logger=None):
     try:

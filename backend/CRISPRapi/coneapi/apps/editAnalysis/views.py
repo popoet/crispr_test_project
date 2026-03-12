@@ -151,6 +151,14 @@ class EditAnalysisView(APIView):
 
         # 创建任务
         task_id = uuid.uuid4()
+        # 确保应用的顶层目录存在
+        ea_base_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis')
+        ea_tasks_dir = os.path.join(ea_base_dir, 'EA_tasks')
+        ea_files_dir = os.path.join(ea_base_dir, 'EA_files')
+        os.makedirs(ea_base_dir, exist_ok=True)
+        os.makedirs(ea_tasks_dir, exist_ok=True)
+        os.makedirs(ea_files_dir, exist_ok=True)
+        
         task_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_tasks/{task_id}/")
         os.makedirs(task_dir, exist_ok=True)
 
@@ -329,6 +337,12 @@ class FileUploadView(APIView):
                 results["fq_files"] = "pload failed, only zip files are allowed"
             else:
                 if not EditAnalysisFiles.objects.filter(file_md5=fq_md5).exists():
+                    # 确保应用的顶层目录存在
+                    ea_base_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis')
+                    ea_files_dir = os.path.join(ea_base_dir, 'EA_files')
+                    os.makedirs(ea_base_dir, exist_ok=True)
+                    os.makedirs(ea_files_dir, exist_ok=True)
+                    
                     fq_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{fq_md5}/")
                     fq_path = os.path.join(fq_dir, fq_file.name)
 
@@ -358,6 +372,12 @@ class FileUploadView(APIView):
         # 上传 target 文件
         if target_file and target_md5:
             if not EditAnalysisFiles.objects.filter(file_md5=target_md5).exists():
+                # 确保应用的顶层目录存在
+                ea_base_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis')
+                ea_files_dir = os.path.join(ea_base_dir, 'EA_files')
+                os.makedirs(ea_base_dir, exist_ok=True)
+                os.makedirs(ea_files_dir, exist_ok=True)
+                
                 target_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{target_md5}/")
                 target_path = os.path.join(target_dir, target_file.name)
 
