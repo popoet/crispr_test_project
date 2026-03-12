@@ -336,21 +336,38 @@ class FileUploadView(APIView):
             if not fq_file.name.endswith(".zip"):
                 results["fq_files"] = "pload failed, only zip files are allowed"
             else:
-                if not EditAnalysisFiles.objects.filter(file_md5=fq_md5).exists():
+                # 检查数据库中是否存在该 MD5 记录
+                fq_record_exists = EditAnalysisFiles.objects.filter(file_md5=fq_md5).exists()
+                        
+                # 如果数据库记录不存在，或者记录存在但文件已丢失，需要重新上传
+                need_upload = not fq_record_exists
+                        
+                if fq_record_exists:
+                    # 数据库记录存在，检查文件是否真的存在
+                    expected_path = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{fq_md5}/", fq_file.name)
+                    if not os.path.exists(expected_path):
+                        need_upload = True  # 文件丢失，需要重新上传
+                        
+                if need_upload:
                     # 确保应用的顶层目录存在
                     ea_base_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis')
                     ea_files_dir = os.path.join(ea_base_dir, 'EA_files')
                     os.makedirs(ea_base_dir, exist_ok=True)
                     os.makedirs(ea_files_dir, exist_ok=True)
-                    
+                            
                     fq_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{fq_md5}/")
                     fq_path = os.path.join(fq_dir, fq_file.name)
-
+        
                     try:
                         os.makedirs(fq_dir, exist_ok=True)
                         with open(fq_path, "wb+") as f:
                             for chunk in fq_file.chunks():
                                 f.write(chunk)
+                                
+                        # 如果之前有旧记录，先删除（避免重复）
+                        if fq_record_exists:
+                            EditAnalysisFiles.objects.filter(file_md5=fq_md5).delete()
+                                
                         EditAnalysisFiles.objects.create(
                             file_type="fq_files",
                             file_name=fq_file.name,
@@ -364,28 +381,45 @@ class FileUploadView(APIView):
                             os.remove(fq_path)
                         if os.path.exists(fq_dir) and not os.listdir(fq_dir):
                             os.rmdir(fq_dir)  # 只删除空目录
-                        print(f"fq文件上传失败: {str(e)}")
+                        print(f"fq 文件上传失败：{str(e)}")
                         results["fq_files"] = "Upload failed"
                 else:
                     results["fq_files"] = "Upload successful"
 
         # 上传 target 文件
         if target_file and target_md5:
-            if not EditAnalysisFiles.objects.filter(file_md5=target_md5).exists():
+            # 检查数据库中是否存在该 MD5 记录
+            target_record_exists = EditAnalysisFiles.objects.filter(file_md5=target_md5).exists()
+                    
+            # 如果数据库记录不存在，或者记录存在但文件已丢失，需要重新上传
+            need_upload = not target_record_exists
+                    
+            if target_record_exists:
+                # 数据库记录存在，检查文件是否真的存在
+                expected_path = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{target_md5}/", target_file.name)
+                if not os.path.exists(expected_path):
+                    need_upload = True  # 文件丢失，需要重新上传
+                    
+            if need_upload:
                 # 确保应用的顶层目录存在
                 ea_base_dir = os.path.join(settings.BASE_DIR, 'work', 'editAnalysis')
                 ea_files_dir = os.path.join(ea_base_dir, 'EA_files')
                 os.makedirs(ea_base_dir, exist_ok=True)
                 os.makedirs(ea_files_dir, exist_ok=True)
-                
+                        
                 target_dir = os.path.join(settings.BASE_DIR, f"work/editAnalysis/EA_files/{target_md5}/")
                 target_path = os.path.join(target_dir, target_file.name)
-
+        
                 try:
                     os.makedirs(target_dir, exist_ok=True)
                     with open(target_path, "wb+") as f:
                         for chunk in target_file.chunks():
                             f.write(chunk)
+                            
+                    # 如果之前有旧记录，先删除（避免重复）
+                    if target_record_exists:
+                        EditAnalysisFiles.objects.filter(file_md5=target_md5).delete()
+                            
                     EditAnalysisFiles.objects.create(
                         file_type="target_file",
                         file_name=target_file.name,
@@ -399,7 +433,7 @@ class FileUploadView(APIView):
                         os.remove(target_path)
                     if os.path.exists(target_dir) and not os.listdir(target_dir):
                         os.rmdir(target_dir)  # 只删除空目录
-                    print(f"target文件上传失败: {str(e)}")
+                    print(f"target 文件上传失败：{str(e)}")
                     results["target_file"] = "Upload failed"
             else:
                 results["target_file"] = "Upload successful"
