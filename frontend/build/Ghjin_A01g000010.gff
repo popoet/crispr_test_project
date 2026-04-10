@@ -1,0 +1,15 @@
+##gff-version 3
+Ghjin_A01	EVM	gene	18209	20827	.	-	.	ID=Ghjin_A01g000010
+Ghjin_A01	EVM	mRNA	18209	20827	.	-	.	ID=Ghjin_A01g000010.1;Parent=Ghjin_A01g000010
+Ghjin_A01	EVM	exon	18209	18293	.	-	.	ID=Ghjin_A01g000010.1_exon_1;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	18209	18293	.	-	0	ID=Ghjin_A01g000010.1_cds_1;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	exon	19232	19456	.	-	.	ID=Ghjin_A01g000010.1_exon_2;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	19232	19456	.	-	0	ID=Ghjin_A01g000010.1_cds_2;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	exon	19592	19729	.	-	.	ID=Ghjin_A01g000010.1_exon_3;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	19592	19729	.	-	0	ID=Ghjin_A01g000010.1_cds_3;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	exon	20413	20522	.	-	.	ID=Ghjin_A01g000010.1_exon_4;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	20413	20522	.	-	1	ID=Ghjin_A01g000010.1_cds_4;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	exon	20621	20653	.	-	.	ID=Ghjin_A01g000010.1_exon_5;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	20621	20653	.	-	1	ID=Ghjin_A01g000010.1_cds_5;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	exon	20737	20827	.	-	.	ID=Ghjin_A01g000010.1_exon_6;Parent=Ghjin_A01g000010.1
+Ghjin_A01	EVM	CDS	20737	20827	.	-	0	ID=Ghjin_A01g000010.1_cds_6;Parent=Ghjin_A01g000010.1

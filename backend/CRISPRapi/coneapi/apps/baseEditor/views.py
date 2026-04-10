@@ -29,7 +29,26 @@ class BaseEditorExecuteView(APIView):
     Base Editor执行
     """
 
+    def get(self, request):
+        """
+        GET请求：通过 task_id 查询已有任务结果
+        """
+        task_id = request.query_params.get('task_id')
+            
+        if not task_id:
+            return Response({"msg": "缺少 task_id 参数"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        return self._query_existing_task(task_id)
+    
     def post(self, request):
+        # 检查是否提供了 task_id 参数（用于直接访问已有结果）
+        task_id = request.data.get('task_id') or request.query_params.get('task_id')
+        
+        if task_id:
+            # 直接查询已有任务结果
+            return self._query_existing_task(task_id)
+        
+        # 否则执行原有的新任务创建逻辑
         inputSequence = request.data.get('inputSequence')
         pam = request.data.get('pam', 'NGG')
         spacerLength = request.data.get('spacerLength')
@@ -287,6 +306,61 @@ class BaseEditorExecuteView(APIView):
             "max_retries": MAX_RETRY_COUNT,
             "can_retry": retry_count < MAX_RETRY_COUNT
         }
+    
+    def _query_existing_task(self, task_id):
+        """
+        查询已有任务的结果
+        """
+        try:
+            # 查询任务记录
+            task_record = models.result_base_editor_list.objects.get(task_id=task_id)
+            
+            # 检查任务状态
+            if task_record.task_status == 'failed':
+                return Response({
+                    "msg": "任务执行失败",
+                    "error": task_record.log or "未知错误"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if task_record.task_status == 'pending' or task_record.task_status == 'running':
+                return Response({
+                    "msg": "任务正在运行中",
+                    "task_id": task_id,
+                    "status": task_record.task_status
+                }, status=status.HTTP_202_ACCEPTED)
+            
+            if task_record.task_status != 'finished':
+                return Response({
+                    "msg": "任务状态未知",
+                    "status": task_record.task_status
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 检查结果文件是否存在
+            if not task_record.sgRNA_with_JBrowse_json:
+                return Response({
+                    "msg": "任务结果不存在"
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            result_file_path = os.path.join(settings.BASE_DIR, task_record.sgRNA_with_JBrowse_json)
+            if not os.path.exists(result_file_path):
+                return Response({
+                    "msg": "结果文件丢失"
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # 返回结果
+            with open(result_file_path, 'r') as f:
+                response_data = json.load(f)
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except models.result_base_editor_list.DoesNotExist:
+            return Response({
+                "msg": "任务不存在"
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                "msg": f"查询失败：{str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class BaseEditorJbrowseAPI(APIView):

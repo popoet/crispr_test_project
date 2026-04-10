@@ -446,6 +446,7 @@ def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_
                 base_editing_info_list.append(base_editing_info)
 
         json_handle = {
+            "task_id": task_id,
             "TableData": {
                 "base_editor_type": base_editor_type,
                 "base_editing_window": base_editing_window,

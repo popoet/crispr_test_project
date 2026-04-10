@@ -3,6 +3,7 @@ import re
 import json
 import os
 import logging
+import hashlib
 import pandas as pd
 import pysam
 from Bio import SeqIO
@@ -259,6 +260,13 @@ def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_d
         sgRNA_dataframe, sgRNA_json = generate_sgRNA_dataframe(family_records, target_seq, target_seq_reverse, target_start,
                                                                target_end, fasta_sequence_position['seqid'], pam,
                                                                spacerLength, sgRNAModule, task_path, task_logger)
+        
+        # 6.5、根据是否找到CpG岛决定是否过滤 sgRNA
+        if not cpg_island_info.get('found', False):
+            task_logger.info("未找到CpG岛区域，过滤只保留外显子上的 sgRNA")
+            sgRNA_dataframe = filter_sgRNA_by_exon(sgRNA_dataframe, family_records, task_logger)
+        else:
+            task_logger.info("找到CpG岛区域，不过滤sgRNA")
                 
         # 重新生成 JSON
         sgRNA_json = sgRNA_dataframe.to_json(orient='records')
@@ -573,19 +581,63 @@ def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_
                 'original_position': sequence_position,
                 'cpg_island_position': None
             }
-
-        json_handle = {"TableData": {"json_data": guide_json},
+        
+        # 从 sgRNA 数据中提取唯一的基因 ID 列表
+        gene_ids = set()
+        for row in guide_json['rows']:
+            if 'sgRNA_family' in row and row['sgRNA_family']:
+                family_value = row['sgRNA_family']
+                if isinstance(family_value, str):
+                    family_id = family_value.split(',')[0].strip()
+                    if family_id:
+                        gene_ids.add(family_id)
+                elif isinstance(family_value, (list, tuple)):
+                    for fid in family_value:
+                        if fid:
+                            gene_ids.add(str(fid))
+                else:
+                    gene_ids.add(str(family_value))
+        
+        # 构建 tracks 配置
+        tracks_config = {
+            "name": f"{name_db}_sgRNAs",
+            "gff3_gz": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
+            "gff3_tbi": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
+        }
+        
+        # 如果未找到CpG岛区域且有基因信息，添加基因轨道字段
+        if not cpg_island_info.get('found', False) and gene_ids:
+            input_sequence = crispr_epigenome_task_record.input_sequence
+            
+            # 判断输入类型并生成合适的 genes_name
+            if re.match(r'^[ACGTNacgtn\s]+$', input_sequence):
+                clean_seq = input_sequence.replace('\n', '').replace('\r', '').replace(' ', '')
+                if len(clean_seq) <= 30:
+                    genes_name_suffix = f"seq_{clean_seq.upper()}"
+                else:
+                    prefix = clean_seq[:15].upper()
+                    hash_val = hashlib.md5(clean_seq.encode()).hexdigest()[:6]
+                    genes_name_suffix = f"seq_{prefix}{hash_val}_L{len(clean_seq)}"
+            elif re.match(r'^[\w.-]+:\d+-\d+$', input_sequence):
+                genes_name_suffix = input_sequence.replace(':', '_').replace('-', '_')
+            else:
+                genes_name_suffix = input_sequence.replace(' ', '_').replace('.', '_')
+            
+            genes_name = f"{name_db}_{genes_name_suffix}"
+            
+            tracks_config["genes_name"] = genes_name
+            tracks_config["genes_gff3_gz"] = f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz"
+            tracks_config["genes_gff3_tbi"] = f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz.csi"
+        
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,
                                "fasta": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=fa",
                                "fai": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=fai"
                            },
-                           "tracks": {
-                               "name": name_db,
-                               "gff3_gz": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
-                               "gff3_tbi": f"{settings.ADDR}/api/crisprEpigenome/crispr_epigenome_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
-                           },
+                           "tracks": tracks_config,
                            "position": f"{sequence_position['seqid']}:{sequence_position['start']}..{sequence_position['end']}"
                        },
                        "CpGIslandInfo": cpg_island_info}

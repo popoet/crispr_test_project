@@ -3,6 +3,7 @@ import re
 import json
 import os
 import logging
+import hashlib
 import pandas as pd
 import pysam
 from Bio import SeqIO
@@ -350,18 +351,61 @@ def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_
             cas12_task_record = result_cas12b_list.objects.get(task_id=task_id)
             
         sequence_position = json.loads(cas12_task_record.sequence_position)
-        json_handle = {"TableData": {"json_data": guide_json},
+        
+        gene_ids = set()
+        for row in guide_json['rows']:
+            if 'sgRNA_family' in row and row['sgRNA_family']:
+                family_value = row['sgRNA_family']
+                if isinstance(family_value, str):
+                    family_id = family_value.split(',')[0].strip()
+                    if family_id:
+                        gene_ids.add(family_id)
+                elif isinstance(family_value, (list, tuple)):
+                    for fid in family_value:
+                        if fid:
+                            gene_ids.add(str(fid))
+                else:
+                    gene_ids.add(str(family_value))
+        
+        tracks_config = {
+            "name": f"{name_db}_sgRNAs",
+            "gff3_gz": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
+            "gff3_tbi": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
+        }
+        
+        if gene_ids:
+            input_sequence = cas12_task_record.input_sequence
+            
+            if re.match(r'^[ACGTNacgtn\s]+$', input_sequence):
+                clean_seq = input_sequence.replace('\n', '').replace('\r', '').replace(' ', '')
+                
+                if len(clean_seq) <= 30:
+                    genes_name_suffix = f"seq_{clean_seq.upper()}"
+                else:
+                    prefix = clean_seq[:15].upper()
+                    hash_val = hashlib.md5(clean_seq.encode()).hexdigest()[:6]
+                    genes_name_suffix = f"seq_{prefix}{hash_val}_L{len(clean_seq)}"
+                    
+            elif re.match(r'^[\w.-]+:\d+-\d+$', input_sequence):
+                genes_name_suffix = input_sequence.replace(':', '_').replace('-', '_')
+            else:
+                genes_name_suffix = input_sequence.replace(' ', '_').replace('.', '_')
+            
+            genes_name = f"{name_db}_{genes_name_suffix}"
+            
+            tracks_config["genes_name"] = genes_name
+            tracks_config["genes_gff3_gz"] = f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz"
+            tracks_config["genes_gff3_tbi"] = f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz.csi"
+        
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,
                                "fasta": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=fa",
                                "fai": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=fai"
                            },
-                           "tracks": {
-                               "name": name_db,
-                               "gff3_gz": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
-                               "gff3_tbi": f"{settings.ADDR}/api/cas12/{cas_type}/{cas_type}_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
-                           },
+                           "tracks": tracks_config,
                            "position": f"{sequence_position['seqid']}:{sequence_position['start']}..{sequence_position['end']}"
                        }}
         

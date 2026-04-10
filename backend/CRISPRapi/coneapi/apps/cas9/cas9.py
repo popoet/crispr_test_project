@@ -221,24 +221,87 @@ def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_d
 
 def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_db, task_logger=None):
     try:
+        import re
+        import hashlib
+        
         cas9_task_record = result_cas9_list.objects.get(task_id=task_id)
         sequence_position = json.loads(cas9_task_record.sequence_position)
-        json_handle = {"TableData": {"json_data": guide_json},
+        
+        # 从 sgRNA 数据中提取唯一的基因 ID 列表
+        gene_ids = set()
+        for row in guide_json['rows']:
+            if 'sgRNA_family' in row and row['sgRNA_family']:
+                # sgRNA_family 可能是字符串或包含多个基因 ID 的字符串（用逗号分隔）
+                family_value = row['sgRNA_family']
+                if isinstance(family_value, str):
+                    # 如果是字符串，可能包含多个基因 ID（如 "gene1, gene2"）
+                    # 提取第一个基因 ID 作为代表
+                    family_id = family_value.split(',')[0].strip()
+                    if family_id:
+                        gene_ids.add(family_id)
+                elif isinstance(family_value, (list, tuple)):
+                    # 如果是列表或元组，添加所有元素
+                    for fid in family_value:
+                        if fid:
+                            gene_ids.add(str(fid))
+                else:
+                    # 其他类型转换为字符串
+                    gene_ids.add(str(family_value))
+        
+        # 构建 tracks 配置 - 单对象格式，兼容新旧版本前端
+        # 基础 sgRNA 轨道信息
+        tracks_config = {
+            "name": f"{name_db}_sgRNAs",
+            "gff3_gz": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
+            "gff3_tbi": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
+        }
+        
+        # 如果有基因信息，添加基因轨道字段
+        if gene_ids:
+            input_sequence = cas9_task_record.input_sequence
+            
+            # 判断输入类型并生成合适的 genes_name
+            if re.match(r'^[ACGTNacgtn\s]+$', input_sequence):
+                # 纯序列输入（只包含 ACGTN，可能有空格/换行）
+                # 移除空格和换行
+                clean_seq = input_sequence.replace('\n', '').replace('\r', '').replace(' ', '')
+                
+                if len(clean_seq) <= 30:
+                    # 短序列直接显示（转为大写）
+                    genes_name_suffix = f"seq_{clean_seq.upper()}"
+                else:
+                    # 长序列：前缀 15bp + MD5 哈希 6 位 + 总长度
+                    prefix = clean_seq[:15].upper()
+                    hash_val = hashlib.md5(clean_seq.encode()).hexdigest()[:6]
+                    genes_name_suffix = f"seq_{prefix}{hash_val}_L{len(clean_seq)}"
+                    
+            elif re.match(r'^[\w.-]+:\d+-\d+$', input_sequence):
+                # 基因组区域（如 Ghjin_A01:20000-21000）
+                genes_name_suffix = input_sequence.replace(':', '_').replace('-', '_')
+            else:
+                # 基因 ID（如 Ghjin_A01.g00001 或 Ghjin_A01g000010）
+                # 清理可能存在的特殊字符
+                genes_name_suffix = input_sequence.replace(' ', '_').replace('.', '_')
+            
+            genes_name = f"{name_db}_{genes_name_suffix}"
+            
+            tracks_config["genes_name"] = genes_name
+            tracks_config["genes_gff3_gz"] = f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz"
+            tracks_config["genes_gff3_tbi"] = f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz.csi"
+        
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,
                                "fasta": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=fa",
                                "fai": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=fai"
                            },
-                           "tracks": {
-                               "name": name_db,
-                               "gff3_gz": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
-                               "gff3_tbi": f"{settings.ADDR}/api/cas9/cas9_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
-                           },
+                           "tracks": tracks_config,
                            "position": f"{sequence_position['seqid']}:{sequence_position['start']}..{sequence_position['end']}"
                        }}
         
-        # 保存结果到JSON文件
+        # 保存结果到 JSON 文件
         json_file_path = f'{task_path}/Guide.json3'
         with open(json_file_path, 'w') as file_handle:
             json.dump(json_handle, file_handle)

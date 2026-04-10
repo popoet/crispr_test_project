@@ -2,6 +2,7 @@ import logging
 import uuid
 import json
 import os
+import subprocess
 from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
@@ -40,10 +41,61 @@ def run_cas9_analysis(self, task_id, inputSequence, pam, spacerLength, sgRNAModu
             logger.error(f"CAS9任务 {task_id} 失败: 获取到的目标区域基因数目超出最大限制2")
             return {"error": "获取到的目标区域基因数目超出最大限制2"}
         else:
-            # 任务成功完成
-            cas9_task_record.task_status = 'finished'
-            # 保存结果文件路径到数据库
+            # 任务成功完成后，预先生成所有GFF文件
+            logger.info(f"开始生成CAS9任务 {task_id} 的GFF文件")
+
+            # 保存结果路径到数据库（需要先保存，因为后续代码需要读取结果文件）
             cas9_task_record.sgRNA_with_JBrowse_json = response_data
+            cas9_task_record.save()
+
+            # 确保tmp目录存在
+            tmp_dir = os.path.join(settings.BASE_DIR, 'work', 'cas9Tmp', task_id)
+            os.makedirs(tmp_dir, exist_ok=True)
+
+            # 1. 生成sgRNA的gff3.gz和索引
+            sgRNA_gff = os.path.join(tmp_dir, f"{name_db}_{task_id}_sgRNA.gff3")
+            sgRNA_gff_gz = sgRNA_gff + ".gz"
+            sgRNA_gff_csi = sgRNA_gff_gz + ".csi"
+
+            result_file = os.path.join(settings.BASE_DIR, response_data)
+            try:
+                with open(result_file, 'r') as f:
+                    data = json.load(f)
+
+                with open(sgRNA_gff, "w", encoding="utf-8") as gff_file:
+                    gff_file.write("##gff-version 3\n")
+                    for row in data["TableData"]["json_data"]["rows"]:
+                        seqid, start_str = row["sgRNA_position"].split(":")
+                        start = int(start_str)
+                        end = start + len(row["sgRNA_seq"]) - 1
+                        strand = "+" if row["sgRNA_strand"] == "5'------3'" else "-"
+                        sgRNA_id = row["sgRNA_id"]
+                        attributes = f"ID={sgRNA_id};Name={sgRNA_id};Sequence={row['sgRNA_seq']}"
+                        gff_file.write(f"{seqid}\tsgRNA\tguide\t{start}\t{end}\t.\t{strand}\t.\t{attributes}\n")
+
+                subprocess.run(["sort", "-t", "\t", "-k1,1", "-k4,4n", sgRNA_gff, "-o", sgRNA_gff], check=True)
+                subprocess.run([f"{settings.CONDA_ENV_BIN_PATH}/bgzip", "-f", sgRNA_gff], check=True)
+                subprocess.run([f"{settings.CONDA_ENV_BIN_PATH}/tabix", "-p", "gff", "-C", sgRNA_gff_gz], check=True)
+                logger.info(f"CAS9任务 {task_id} 的sgRNA GFF文件生成完成")
+            except Exception as e:
+                logger.warning(f"CAS9任务 {task_id} sgRNA GFF文件生成失败: {str(e)}")
+
+            # 2. 生成gene GFF文件
+            gene_gff = os.path.join(tmp_dir, f"{name_db}_{task_id}_genes.gff3")
+            gene_gff_gz = gene_gff + ".gz"
+            try:
+                from .views import Cas9JbrowseAPI
+                view_instance = Cas9JbrowseAPI()
+                view_instance._generate_gene_gff(result_file, gene_gff, name_db)
+
+                subprocess.run([f"{settings.CONDA_ENV_BIN_PATH}/bgzip", "-f", gene_gff], check=True)
+                subprocess.run([f"{settings.CONDA_ENV_BIN_PATH}/tabix", "-p", "gff", "-C", gene_gff_gz], check=True)
+                logger.info(f"CAS9任务 {task_id} 的基因GFF文件生成完成")
+            except Exception as e:
+                logger.warning(f"CAS9任务 {task_id} 基因GFF文件生成失败，但继续完成主任务: {str(e)}")
+
+            # 3. 设置任务状态为finished
+            cas9_task_record.task_status = 'finished'
             cas9_task_record.save()
             logger.info(f"CAS9任务 {task_id} 成功完成")
             

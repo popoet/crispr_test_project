@@ -1,0 +1,53 @@
+﻿序列,物种中文名称,物种拉丁名,基因组版本号,下载路径
+1,水稻,Oryza nivara,Oryza_nivara.Oryza_nivara_v1.0.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/oryza_nivara/dna/Oryza_nivara.Oryza_nivara_v1.0.dna.toplevel.fa.gz
+2,拟南芥,Arabidopsis thaliana,Arabidopsis_thaliana.TAIR10.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+3,玉米,Zea mays,Zea_mays.Zm-B73-REFERENCE-NAM-5.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/zea_mays/dna/Zea_mays.Zm-B73-REFERENCE-NAM-5.0.dna.toplevel.fa.gz
+4,大麦,Hordeum vulgare,Hordeum_vulgare.MorexV3,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/hordeum_vulgare/dna/Hordeum_vulgare.MorexV3_pseudomolecules_assembly.dna.toplevel.fa.gz
+5,藜麦,Chenopodium_quinoa,Chenopodium_quinoa.ASM168347v1.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/chenopodium_quinoa/dna/Chenopodium_quinoa.ASM168347v1.dna.toplevel.fa.gz
+6,猕猴桃,Actinidia chinensis,Actinidia_chinensis.Red5_PS1_1.69.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/actinidia_chinensis/dna/Actinidia_chinensis.Red5_PS1_1.69.0.dna.toplevel.fa.gz
+7,山羊草,Aegilops tauschii,Aegilops_tauschii.Aet_v4.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/aegilops_tauschii/dna/Aegilops_tauschii.Aet_v4.0.dna.toplevel.fa.gz
+8,芦笋,Asparagus officinalis,Asparagus_officinalis.Aspof.V1,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/asparagus_officinalis/dna/Asparagus_officinalis.Aspof.V1.dna.toplevel.fa.gz
+9,燕麦,Avena_sativa,Avena_sativa_ot3098.Oat_OT3098_v2,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/avena_sativa_ot3098/dna/Avena_sativa_ot3098.Oat_OT3098_v2.dna.toplevel.fa.gz
+10,辣椒,Capsicum annuum,Capsicum_annuum.ASM51225v2.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/capsicum_annuum/dna/Capsicum_annuum.ASM51225v2.dna.toplevel.fa.gz
+11,宜昌橘,Citrus ichangensis,Citrus ichangensis v2.0,http://citrus.hzau.edu.cn/data/Genome_info/ZGYCC.v2.0/ZGYCC.v2.0.genome.fa
+12,甜橙,citrus sinensis,Citrus sinensis v3.0 ,http://citrus.hzau.edu.cn/data/Genome_info/SWO.v3.0/SWO.v3.0.genome.fa
+13,木薯,Manihot_esculenta,Manihot_esculenta.Manihot_esculenta_v6,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/manihot_esculenta/dna/Manihot_esculenta.Manihot_esculenta_v6.dna.toplevel.fa.gz
+14,枸橼,Citrus medica,Citrus medica v1.0,http://citrus.hzau.edu.cn/data/Genome_info/RL.v1.0/RL.v1.0.genome.fa
+15,金钱橘,Citrus clementina,Citrus clementina v1.0,http://citrus.hzau.edu.cn/data/Genome_info/GCF.v1.0/GCF.v1.0.genome.fa
+16,山橘,Fortunella hindsii,Fortunella hindsii v1.0,http://citrus.hzau.edu.cn/data/Genome_info/GJ.v2.0/GJ.v2.0.genome.fa
+17,黄皮,clausena lansium,Clausena lansium v1.0,http://citrus.hzau.edu.cn/data/Genome_info/HP.v1.0/HP.v1.0.genome.fa
+18,澳洲手指莱檬,Citrus australasica,Citrus australasica v1.0,http://citrus.hzau.edu.cn/data/Genome_info/AZM.v1.0/AZM.v1.0.genome.fa
+19,木橘,Aegle marmelos,Aegle marmelos v1.0,http://citrus.hzau.edu.cn/data/Genome_info/AEG.v1.0/AEG.v1.0.genome.fa
+20,莽山野桔,Citrus mangshanensis,Citrus mangshanensis v1.0,http://citrus.hzau.edu.cn/data/Genome_info/MSYG.v1.0/MSYG.v1.0.genome.fa
+21,柑橘,Citrus reticulata,Citrus reticulata v1.0,http://citrus.hzau.edu.cn/data/Genome_info/JZ.v1.0/JZ.v1.0.genome.fa
+22,红河橙,Citrus hongheensis,Citrus hongheensis v1.0,http://citrus.hzau.edu.cn/data/Genome_info/HH.v1.0/HH.v1.0.genome.fa
+23,胡萝卜,Daucus carota,Daucus_carota.ASM162521v1,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/daucus_carota/dna/Daucus_carota.ASM162521v1.dna.toplevel.fa.gz
+24,蔗茅,Erianthus rufipilus,Erufi,http://sugarcane.zhangjisenlab.cn/sgdv2/download/Erufi/Erufi.v20220328.gene.fa.tar.gz
+25,大豆,Glycine max,Glycine_max.Glycine_max_v2.1.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/glycine_max/dna/Glycine_max.Glycine_max_v2.1.dna.toplevel.fa.gz
+26,向日葵,Helianthus annuus,Helianthus_annuus.HanXRQr2.0-SUNRISE,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/helianthus_annuus/dna/Helianthus_annuus.HanXRQr2.0-SUNRISE.dna.toplevel.fa.gz
+27,橄榄,Olea europaea,GCF_002742605.1,https://www.ncbi.nlm.nih.gov/datasets/genome/GCF_002742605.1/
+28,豌豆,Pisum sativum,Pisum_sativum.Pisum_sativum_v1a,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/pisum_sativum/dna/Pisum_sativum.Pisum_sativum_v1a.dna.toplevel.fa.gz
+29,蔷薇,Rosa chinensis,Rosa_chinensis.RchiOBHm-V2,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/rosa_chinensis/dna/Rosa_chinensis.RchiOBHm-V2.dna.toplevel.fa.gz
+30,甜根子草,Saccharum spontaneum,Saccharum_spontaneum.Sspon.HiC,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/saccharum_spontaneum/dna/Saccharum_spontaneum.Sspon.HiC_chr_asm.dna.toplevel.fa.gz
+31,芝麻,Sesamum indicum,Sesamum_indicum.S_indicum_v1.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/sesamum_indicum/dna/Sesamum_indicum.S_indicum_v1.0.dna.toplevel.fa.gz
+32,小麦,Triticum aestivum,Triticum_aestivum.IWGSC,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/triticum_aestivum/dna/Triticum_aestivum.IWGSC.dna.toplevel.fa.gz
+33,葡萄,Vitis vinifera,Vitis_vinifera.PN40024.v4,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/vitis_vinifera/dna/Vitis_vinifera.PN40024.v4.dna.toplevel.fa.gz
+34,高粱,Sorghum_bicolor,Sorghum_bicolor.Sorghum_bicolor_NCBIv3,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/sorghum_bicolor/dna/Sorghum_bicolor.Sorghum_bicolor_NCBIv3.dna.toplevel.fa.gz
+35,日本晴,Oryza sativa Japonica,Oryza_sativa.IRGSP-1.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/oryza_sativa/dna/Oryza_sativa.IRGSP-1.0.dna.toplevel.fa.gz
+36,苔藓,Physcomitrium patens,Physcomitrium_patens.Phypa_V3,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/physcomitrium_patens/dna/Physcomitrium_patens.Phypa_V3.dna.toplevel.fa.gz
+37,罗布斯塔咖啡,Coffea canephora,Coffea_canephora.AUK_PRJEB4211_v1,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/coffea_canephora/dna/Coffea_canephora.AUK_PRJEB4211_v1.dna.toplevel.fa.gz
+38,亚麻荠,Camelina_sativa,Camelina_sativa.Cs,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/camelina_sativa/dna/Camelina_sativa.Cs.dna.toplevel.fa.gz
+39,无花果,Ficus carica,Ficus_carica.UNIPI_FiCari_1.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/ficus_carica/dna/Ficus_carica.UNIPI_FiCari_1.0.dna.toplevel.fa.gz
+40,开心果,Pistacia vera,Pistacia_vera.PisVer_v2,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/pistacia_vera/dna/Pistacia_vera.PisVer_v2.dna.toplevel.fa.gz
+41,甜瓜,Cucumis melo,Cucumis_melo.Melonv4,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/cucumis_melo/dna/Cucumis_melo.Melonv4.dna.toplevel.fa.gz
+42,黄瓜,Cucumis sativus,Cucumis_sativus.ASM407v2.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/cucumis_sativus/dna/Cucumis_sativus.ASM407v2.dna.toplevel.fa.gz
+43,番茄,Solanum lycopersicum,Solanum_lycopersicum.SL3.0,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/solanum_lycopersicum/dna/Solanum_lycopersicum.SL3.0.dna.toplevel.fa.gz
+44,菜豆,Phaseolus vulgaris,Phaseolus_vulgaris.PhaVulg1_0.,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/phaseolus_vulgaris/dna/Phaseolus_vulgaris.PhaVulg1_0.dna.toplevel.fa.gz
+45,罂粟,Papaver_somniferum,Papaver_somniferum.ASM357369v1,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/papaver_somniferum/dna/Papaver_somniferum.ASM357369v1.dna.toplevel.fa.gz
+46,可可茶,theobroma_cacao,Theobroma_cacao.Theobroma_cacao_20110822,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/theobroma_cacao/dna/Theobroma_cacao.Theobroma_cacao_20110822.dna.toplevel.fa.gz
+47,绿豆,Vigna_radiata,Vigna_radiata.Vradiata_ver6,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/vigna_radiata/dna/Vigna_radiata.Vradiata_ver6.dna.toplevel.fa.gz
+48,芸苔型油菜,Brassica_napus,Brassica_napus.AST_PRJEB5043_v1,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/brassica_napus/dna/Brassica_napus.AST_PRJEB5043_v1.dna.toplevel.fa.gz
+49,甜菜,Beta_vulgaris,Beta_vulgaris.RefBeet-1.2.2,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/beta_vulgaris/dna/Beta_vulgaris.RefBeet-1.2.2.dna.toplevel.fa.gz
+50,大麻,Cannabis_sativa_female,Cannabis_sativa_female.cs10,https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-58/fasta/cannabis_sativa_female/dna/Cannabis_sativa_female.cs10.dna.toplevel.fa.gz
+,,,,
+,,,,

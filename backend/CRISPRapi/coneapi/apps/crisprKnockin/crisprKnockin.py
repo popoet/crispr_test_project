@@ -3,6 +3,7 @@ import re
 import json
 import os
 import logging
+import hashlib
 import pandas as pd
 import pysam
 from Bio import SeqIO
@@ -222,27 +223,65 @@ def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_
     try:
         crisprknockin_task_record = result_crisprknockin_list.objects.get(task_id=task_id)
         sequence_position = json.loads(crisprknockin_task_record.sequence_position)
-        json_handle = {"TableData": {"json_data": guide_json},
+        
+        gene_ids = set()
+        if guide_json and 'rows' in guide_json:
+            for item in guide_json['rows']:
+                family_value = item.get('sgRNA_family')
+                if family_value:
+                    if isinstance(family_value, str):
+                        gene_ids.add(family_value)
+                    elif isinstance(family_value, (list, tuple)):
+                        for fid in family_value:
+                            if fid:
+                                gene_ids.add(str(fid))
+                    else:
+                        gene_ids.add(str(family_value))
+        
+        tracks_config = {
+            "name": f"{name_db}_sgRNAs",
+            "gff3_gz": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
+            "gff3_tbi": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
+        }
+        
+        if gene_ids:
+            input_sequence = crisprknockin_task_record.input_sequence
+            
+            if re.match(r'^[ACGTNacgtn\s]+$', input_sequence):
+                clean_seq = input_sequence.replace('\n', '').replace('\r', '').replace(' ', '')
+                if len(clean_seq) <= 30:
+                    genes_name_suffix = f"seq_{clean_seq.upper()}"
+                else:
+                    prefix = clean_seq[:15].upper()
+                    hash_val = hashlib.md5(clean_seq.encode()).hexdigest()[:6]
+                    genes_name_suffix = f"seq_{prefix}{hash_val}_L{len(clean_seq)}"
+            elif re.match(r'^[\w.-]+:\d+-\d+$', input_sequence):
+                genes_name_suffix = input_sequence.replace(':', '_').replace('-', '_')
+            else:
+                genes_name_suffix = input_sequence.replace(' ', '_').replace('.', '_')
+            
+            genes_name = f"{name_db}_{genes_name_suffix}"
+            
+            tracks_config["genes_name"] = genes_name
+            tracks_config["genes_gff3_gz"] = f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz"
+            tracks_config["genes_gff3_tbi"] = f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz.csi"
+        
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,
                                "fasta": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=fa",
                                "fai": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=fai"
                            },
-                           "tracks": {
-                               "name": name_db,
-                               "gff3_gz": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
-                               "gff3_tbi": f"{settings.ADDR}/api/crisprKnockin/crisprknockin_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
-                           },
+                           "tracks": tracks_config,
                            "position": f"{sequence_position['seqid']}:{sequence_position['start']}..{sequence_position['end']}"
                        }}
         
-        # 保存结果到JSON文件
         json_file_path = f'{task_path}/Guide.json3'
         with open(json_file_path, 'w') as file_handle:
             json.dump(json_handle, file_handle)
         
-        # 返回相对路径
         relative_path = os.path.relpath(json_file_path, settings.BASE_DIR)
         return relative_path
     except Exception as e:

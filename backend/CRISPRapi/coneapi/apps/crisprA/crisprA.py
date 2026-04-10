@@ -220,7 +220,8 @@ def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_
     try:
         crispra_task_record = result_crispra_list.objects.get(task_id=task_id)
         sequence_position = json.loads(crispra_task_record.sequence_position)
-        json_handle = {"TableData": {"json_data": guide_json},
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,

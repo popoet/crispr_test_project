@@ -3,6 +3,7 @@ import re
 import json
 import os
 import logging
+import hashlib
 import pandas as pd
 import pysam
 from Bio import SeqIO
@@ -196,7 +197,7 @@ def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_d
         guide_json = sam_intersect_pandas_to_json(sam_pandas, intersect_pandas, task_path, task_logger)
 
         # 9、添加 JBrowse 可视化信息并保存到文件
-        json_file_path = add_Jbrowse_to_json(task_id, task_path, fasta_sequence_position_json, guide_json, name_db, task_logger)
+        json_file_path = add_Jbrowse_to_json(task_id, task_path, fasta_sequence_position_json, guide_json, name_db, unique_gene_ids, task_logger)
         return json_file_path
     except Exception as e:
         # 记录错误日志
@@ -219,22 +220,48 @@ def form2Database(task_id, inputSequence, pam, spacerLength, sgRNAModule, name_d
             task_logger.removeHandler(handler)
 
 
-def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_db, task_logger=None):
+def add_Jbrowse_to_json(task_id, task_path, sequence_position, guide_json, name_db, gene_ids=None, task_logger=None):
     try:
         fanzor_task_record = result_fanZor_list.objects.get(task_id=task_id)
         sequence_position = json.loads(fanzor_task_record.sequence_position)
-        json_handle = {"TableData": {"json_data": guide_json},
+        
+        tracks_config = {
+            "name": f"{name_db}_sgRNAs",
+            "gff3_gz": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
+            "gff3_tbi": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
+        }
+        
+        if gene_ids:
+            input_sequence = fanzor_task_record.input_sequence
+            
+            if re.match(r'^[ACGTNacgtn\s]+$', input_sequence):
+                clean_seq = input_sequence.replace('\n', '').replace('\r', '').replace(' ', '')
+                if len(clean_seq) <= 30:
+                    genes_name_suffix = f"seq_{clean_seq.upper()}"
+                else:
+                    prefix = clean_seq[:15].upper()
+                    hash_val = hashlib.md5(clean_seq.encode()).hexdigest()[:6]
+                    genes_name_suffix = f"seq_{prefix}{hash_val}_L{len(clean_seq)}"
+            elif re.match(r'^[\w.-]+:\d+-\d+$', input_sequence):
+                genes_name_suffix = input_sequence.replace(':', '_').replace('-', '_')
+            else:
+                genes_name_suffix = input_sequence.replace(' ', '_').replace('.', '_')
+            
+            genes_name = f"{name_db}_{genes_name_suffix}"
+            
+            tracks_config["genes_name"] = genes_name
+            tracks_config["genes_gff3_gz"] = f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz"
+            tracks_config["genes_gff3_tbi"] = f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=genes.gff3.gz.csi"
+        
+        json_handle = {"task_id": task_id,
+                       "TableData": {"json_data": guide_json},
                        "JbrowseInfo": {
                            "assembly": {
                                "name": name_db,
                                "fasta": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=fa",
                                "fai": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=fai"
                            },
-                           "tracks": {
-                               "name": name_db,
-                               "gff3_gz": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz",
-                               "gff3_tbi": f"{settings.ADDR}/api/fanZor/fanzor_Jbrowse_API/?task_id={task_id}&file_type=gff3.gz.csi"
-                           },
+                           "tracks": tracks_config,
                            "position": f"{sequence_position['seqid']}:{sequence_position['start']}..{sequence_position['end']}"
                        }}
         
